@@ -24,7 +24,7 @@ Litematica Material Counter 是一个 Python 脚本，用于精确统计 `.litem
 *   **CSV输出**: 生成详细的CSV格式报告，包含物品的（中文）名称、命名空间ID、NBT信息摘要、总数量以及估算存储所需的潜影盒数量。
 
 ## > 依赖项
-*   Python 3.7+ (推荐 3.9+)
+*   Python 3.7+
 *   `litemapy` (用于解析 `.litematic` 文件)
 *   `nbtlib` (用于处理NBT数据)
 
@@ -67,6 +67,7 @@ python ./material_counter.py ./schematics/{投影文件名称}.litematic
 ## > 更新日志
 
 - v1.0.0 2025.5.11 初始版本
+- v1.0.1 2025.5.11 添加相同物品合并映射，使得物品ID不同但本质上相同的物品（如火把物品和火把方块）的数量合并统计，并将映射表提取到主程序之外
 
 ## > 作者&技术交流/反馈群
 

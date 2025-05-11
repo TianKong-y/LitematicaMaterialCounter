@@ -12,10 +12,17 @@ current_script_dir = os.path.dirname(os.path.abspath(__file__))
 if current_script_dir not in sys.path:
     sys.path.insert(0, current_script_dir)
 from minecraft_lang_loader import load_translations # 新的导入
+from id_normalization import ID_NORMALIZATION_MAP # 新增：从新文件导入ID规范化映射
+from game_data import (
+    SHULKER_BOX_IDS, MAX_STACK_SIZES, ITEM_BEARING_ENTITY_IDS,
+    ENTITY_CONTAINER_IDS, AIR_BLOCK_IDS
+) # 新增：从 game_data.py 导入游戏数据常量
 import json # 为解析JSON文本组件添加
+from collections import defaultdict
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 # --- 常量 ---
-MAX_RECURSION_DEPTH = 5 # 最大递归深度
+MAX_RECURSION_DEPTH = 10 # 最大递归深度
 VERSION = "1.0.0" # 版本号
 
 # --- 翻译 ---
@@ -23,90 +30,6 @@ ITEM_ID_TO_CHINESE_NAME = load_translations()
 if not ITEM_ID_TO_CHINESE_NAME:
     print("[WARNING] ITEM_ID_TO_CHINESE_NAME 为空。翻译可能无法正常工作。")
     ITEM_ID_TO_CHINESE_NAME = {} # 回退到空字典以防止 NameError，尽管翻译会丢失。
-
-SHULKER_BOX_IDS = {
-    "minecraft:shulker_box", "minecraft:white_shulker_box", "minecraft:orange_shulker_box",
-    "minecraft:magenta_shulker_box", "minecraft:light_blue_shulker_box", "minecraft:yellow_shulker_box",
-    "minecraft:lime_shulker_box", "minecraft:pink_shulker_box", "minecraft:gray_shulker_box",
-    "minecraft:light_gray_shulker_box", "minecraft:cyan_shulker_box", "minecraft:purple_shulker_box",
-    "minecraft:blue_shulker_box", "minecraft:brown_shulker_box", "minecraft:green_shulker_box",
-    "minecraft:red_shulker_box", "minecraft:black_shulker_box"
-}
-
-ITEM_FRAME_ITEM_TAG = "Item" # 物品展示框中物品的NBT标签名
-CHEST_MINECART_ITEMS_TAG = "Items" #运输矿车中物品列表的NBT标签名
-ITEM_BEARING_ENTITY_IDS = { # 包含物品作为NBT一部分的实体ID及其物品标签
-    "minecraft:item_frame": ITEM_FRAME_ITEM_TAG,
-    "minecraft:glow_item_frame": ITEM_FRAME_ITEM_TAG,
-}
-ENTITY_CONTAINER_IDS = { # 作为容器的实体ID及其物品列表标签
-    "minecraft:chest_minecart": CHEST_MINECART_ITEMS_TAG,
-    "minecraft:hopper_minecart": CHEST_MINECART_ITEMS_TAG,
-}
-AIR_BLOCK_IDS = {"minecraft:air", "minecraft:cave_air", "minecraft:void_air"} #空气方块ID集合
-
-MAX_STACK_SIZES = { # 定义各种物品的最大堆叠数量
-    "DEFAULT": 64, # 默认堆叠大小
-    "minecraft:ender_pearl": 16,
-    "minecraft:snowball": 16,
-    "minecraft:egg": 16,
-    "minecraft:sign": 16, # 木牌
-    "minecraft:written_book": 1, # 成书
-    "minecraft:writable_book": 1, # 书与笔
-    "minecraft:enchanted_book": 1, # 附魔书
-    "minecraft:bucket": 16, # 空桶堆叠16
-    "minecraft:lava_bucket": 1,
-    "minecraft:water_bucket": 1,
-    "minecraft:milk_bucket": 1,
-    "minecraft:powder_snow_bucket": 1,
-    "minecraft:axolotl_bucket": 1,
-    "minecraft:cod_bucket": 1,
-    "minecraft:pufferfish_bucket": 1,
-    "minecraft:salmon_bucket": 1,
-    "minecraft:tadpole_bucket": 1,
-    "minecraft:tropical_fish_bucket": 1,
-    "minecraft:minecart": 1, # 矿车
-    "minecraft:chest_minecart": 1, # 运输矿车
-    "minecraft:furnace_minecart": 1, # 动力矿车
-    "minecraft:hopper_minecart": 1, # 漏斗矿车
-    "minecraft:tnt_minecart": 1, # TNT矿车
-    "minecraft:saddle": 1, # 鞍
-    "minecraft:potion": 1, # 药水
-    "minecraft:splash_potion": 1, # 喷溅药水
-    "minecraft:lingering_potion": 1, # 滞留药水
-    "minecraft:shield": 1, # 盾牌
-    "minecraft:flint_and_steel": 1, # 打火石
-    "minecraft:shears": 1, # 剪刀
-    "minecraft:bow": 1, # 弓
-    "minecraft:crossbow": 1, # 弩
-    "minecraft:fishing_rod": 1, # 钓鱼竿
-    "minecraft:trident": 1, # 三叉戟
-    "minecraft:elytra": 1, # 鞘翅
-    "minecraft:diamond_sword": 1, # 剑（所有材质）
-    "minecraft:diamond_pickaxe": 1, # 镐（所有材质）
-    "minecraft:diamond_axe": 1, # 斧（所有材质）
-    "minecraft:diamond_shovel": 1, # 锹（所有材质）
-    "minecraft:diamond_hoe": 1, # 锄（所有材质）
-    "minecraft:diamond_helmet": 1, # 头盔（所有材质）
-    "minecraft:diamond_chestplate": 1, # 胸甲（所有材质）
-    "minecraft:diamond_leggings": 1, # 护腿（所有材质）
-    "minecraft:diamond_boots": 1, # 靴子（所有材质）
-    "minecraft:netherite_sword": 1,
-    "minecraft:netherite_pickaxe": 1,
-    "minecraft:netherite_axe": 1,
-    "minecraft:netherite_shovel": 1,
-    "minecraft:netherite_hoe": 1,
-    "minecraft:netherite_helmet": 1,
-    "minecraft:netherite_chestplate": 1,
-    "minecraft:netherite_leggings": 1,
-    "minecraft:netherite_boots": 1,
-    "minecraft:totem_of_undying": 1, # 图腾
-    "minecraft:cake": 1, # 蛋糕
-    "minecraft:bed": 1, # 床 (所有颜色)
-    "minecraft:music_disc_13": 1, # 音乐唱片 (所有类型)
-    "minecraft:music_disc_cat": 1,
-    # 根据需要添加更多，特别是工具、盔甲、独特物品
-}
 
 # --- 数据类 ---
 @dataclass
@@ -207,11 +130,15 @@ def extract_nbt_info(item_stack_nbt: Compound | None) -> dict:
                     extracted['name'] = str(name_tag.value) # JSON解析失败则回退
                 except Exception as e: # 其他访问 .value 属性的错误
                     extracted['name'] = str(name_tag) # 使用 str() 作为最终回退
-                    print(f"[WARN NBT_EXTRACT_FALLBACK] 访问 Name.value (旧方法) 出错: {e}. 使用 str() 转换: {extracted['name']}")
     
-    # 如果未能从 'components' 中提取附魔，尝试旧版NBT路径 ('Enchantments' 列表)
+    # 如果未能从 'components' 中提取附魔，尝试旧版NBT路径 ('Enchantments' 或 'StoredEnchantments' 列表)
     if 'enchantments' not in extracted: 
-        ench_list_tag = item_stack_nbt.get('Enchantments') # 旧版附魔是 'Enchantments' 标签下的列表
+        # 附魔书通常使用 'StoredEnchantments'，其他物品使用 'Enchantments'
+        # 我们将依次尝试两者
+        ench_list_tag = item_stack_nbt.get('StoredEnchantments') # 首先尝试附魔书的标签
+        if not ench_list_tag: # 如果不是附魔书，或者没有这个标签，尝试普通附魔标签
+            ench_list_tag = item_stack_nbt.get('Enchantments') 
+
         if ench_list_tag and isinstance(ench_list_tag, List) and \
            hasattr(ench_list_tag, 'subtype') and ench_list_tag.subtype == Compound: # 列表元素应为Compound
             enchants = {}
@@ -222,11 +149,43 @@ def extract_nbt_info(item_stack_nbt: Compound | None) -> dict:
             if enchants:
                 extracted['enchantments'] = tuple(sorted(enchants.items())) # 转换为可哈希元组
 
-    # 提取药水信息 (旧版 'Potion' 标签)
-    if 'potion' not in extracted: # 'minecraft:potion_contents' 在 'components' 中是更现代的方式，但此处简单处理旧版
-        potion_tag = item_stack_nbt.get('Potion') 
-        if potion_tag and isinstance(potion_tag, String):
-            extracted['potion'] = str(potion_tag)
+    # 提取药水效果
+    potion_effect_value = None
+    # 优先从 components (Minecraft 1.19.4+)
+    if components_tag and isinstance(components_tag, Compound): # components_tag 已在前面定义和检查过
+        potion_contents_tag = components_tag.get('minecraft:potion_contents')
+        if potion_contents_tag and isinstance(potion_contents_tag, Compound):
+            potion_val = potion_contents_tag.get('potion')
+            if potion_val and isinstance(potion_val, String):
+                potion_effect_value = str(potion_val)
+            else: # 处理自定义效果或更复杂的结构
+                # 为了区分，可以将整个 potion_contents 转换为可哈希的表示
+                # (确保这个字符串转换是稳定和可哈希的，如果未来要用作聚合键的一部分)
+                potion_effect_value = f"potion_contents:{str(potion_contents_tag)}"
+    
+    # 如果在 components 中未找到，则回退到旧版 NBT 结构
+    if potion_effect_value is None:
+        # 旧版顶层 'Potion' 标签
+        old_potion_tag = item_stack_nbt.get('Potion')
+        if old_potion_tag and isinstance(old_potion_tag, String):
+            potion_effect_value = str(old_potion_tag)
+        else:
+            # 旧版 'tag' -> 'Potion' 或 'tag' -> 'CustomPotionEffects'
+            # 注意：item_stack_nbt 已经可能是 'tag' 内部的结构，取决于它是如何被传递的。
+            # 但为了安全，我们还是检查 item_stack_nbt.get('tag')
+            tag_compound_for_potion = item_stack_nbt.get('tag') # 检查顶层是否有 'tag'
+            if not tag_compound_for_potion or not isinstance(tag_compound_for_potion, Compound):
+                tag_compound_for_potion = item_stack_nbt # 如果顶层没有 'tag'，则假定当前 item_stack_nbt 就是包含药水标签的层级
+
+            old_tag_potion = tag_compound_for_potion.get('Potion')
+            if old_tag_potion and isinstance(old_tag_potion, String):
+                potion_effect_value = str(old_tag_potion)
+            elif 'CustomPotionEffects' in tag_compound_for_potion and isinstance(tag_compound_for_potion['CustomPotionEffects'], List):
+                    # 简化处理：将 CustomPotionEffects 列表转为字符串
+                potion_effect_value = f"custom_effects:{str(tag_compound_for_potion['CustomPotionEffects'])}"
+
+    if potion_effect_value is not None:
+        extracted['potion_effect'] = potion_effect_value # 使用 'potion_effect' 作为键
 
     return extracted
 
@@ -254,7 +213,8 @@ def process_item_nbt(item_tag_compound: Compound, material_list: list[ProcessedI
                 count_tag and isinstance(count_tag, (Byte, Int))):
             return
 
-        item_id_str = str(item_id_tag) 
+        item_id_str_original = str(item_id_tag) 
+        item_id_str = ID_NORMALIZATION_MAP.get(item_id_str_original, item_id_str_original) # 应用ID规范化
         count_int = int(count_tag)   
         simple_nbt_dict = extract_nbt_info(actual_item_nbt) 
         material_list.append(ProcessedItem(item_id=item_id_str, count=count_int, nbt_dict=simple_nbt_dict))
@@ -311,7 +271,8 @@ def get_materials_from_schematic(schematic: litemapy.Schematic) -> list[Processe
                         if bs_id is not None: # 确保ID有效
                             is_air = bs_id in AIR_BLOCK_IDS # 判断是否为空气方块
                             if not is_air: # 非空气方块则添加到列表
-                                material_list.append(ProcessedItem(item_id=bs_id, count=1, nbt_dict={}))
+                                normalized_bs_id = ID_NORMALIZATION_MAP.get(bs_id, bs_id) # 应用ID规范化
+                                material_list.append(ProcessedItem(item_id=normalized_bs_id, count=1, nbt_dict={}))
                     except IndexError: # 坐标越界则跳过
                         pass
         # 2. 处理区域中的TileEntities (如箱子, 熔炉, 唱片机等)
@@ -409,9 +370,39 @@ def format_nbt_for_display(item_id: str, nbt_dict: dict) -> str:
             parts.append(f"附魔: {', '.join(enchant_strings)}")
     # 药水 (示例结构 - 需要更多数据来获取药水名称/效果)
     # 这是一个占位符，实际的药水逻辑将涉及将药水ID映射到名称/效果。
-    if 'potion' in nbt_dict:
-        potion_name = nbt_dict['potion'].split(':')[-1].replace('_', ' ').capitalize() # 简化药水ID为名称
-        parts.append(f"药水: {potion_name}")
+    if 'potion_effect' in nbt_dict:
+        potion_effect_val = nbt_dict['potion_effect']
+        display_potion_name = potion_effect_val # 默认直接显示
+        
+        # 尝试从 'minecraft:potion_type' 格式的值中提取并翻译
+        if isinstance(potion_effect_val, str) and potion_effect_val.startswith("minecraft:"):
+            # 尝试获取翻译
+            potion_key_id_part = potion_effect_val.split(':')[-1]
+            # 常见的翻译键格式
+            translation_keys_to_try = [
+                f"item.minecraft.potion.effect.{potion_key_id_part}",
+                f"potion.effect.{potion_effect_val.replace(':', '.')}",
+                f"effect.minecraft.{potion_key_id_part}",
+                potion_effect_val # 直接用ID作为键
+            ]
+            translated_name = None
+            for t_key in translation_keys_to_try:
+                translated_name = ITEM_ID_TO_CHINESE_NAME.get(t_key)
+                if translated_name:
+                    break
+            
+            if translated_name:
+                display_potion_name = translated_name
+            else: # 如果翻译不到，就用简化后的ID
+                display_potion_name = potion_key_id_part.replace('_', ' ').capitalize()
+
+        elif isinstance(potion_effect_val, str) and potion_effect_val.startswith("potion_contents:"):
+            display_potion_name = f"内容: {potion_effect_val.split(':', 1)[1]}"
+        elif isinstance(potion_effect_val, str) and potion_effect_val.startswith("custom_effects:"):
+            display_potion_name = f"自定义: {potion_effect_val.split(':', 1)[1]}"
+        
+        parts.append(f"药水: {display_potion_name}")
+
     if 'custom_potion_effects' in nbt_dict: # 在 extract_nbt_info 示例中这被简化为 True
         parts.append("自定义效果") # 这是一个非常简化的表示
     # 在此添加更多NBT格式化，随着 extract_nbt_info 中提取新类型 (例如，头颅所有者，书本内容等)
