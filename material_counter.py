@@ -1,0 +1,513 @@
+# -*- coding: utf-8 -*-
+import litemapy
+from dataclasses import dataclass, field
+from nbtlib.tag import Compound, List, String, Short, Int, Byte # 添加了导入
+import math # 用于在潜影盒计算中使用 math.ceil
+import csv # 为CSV写入添加
+import argparse
+import os
+import sys # 为 sys.path 操作添加
+# 将脚本所在目录添加到 sys.path 以允许直接导入本地模块
+current_script_dir = os.path.dirname(os.path.abspath(__file__))
+if current_script_dir not in sys.path:
+    sys.path.insert(0, current_script_dir)
+from minecraft_lang_loader import load_translations # 新的导入
+import json # 为解析JSON文本组件添加
+
+# --- 常量 ---
+MAX_RECURSION_DEPTH = 5 # 最大递归深度
+VERSION = "1.0.0" # 版本号
+
+# --- 翻译 ---
+ITEM_ID_TO_CHINESE_NAME = load_translations()
+if not ITEM_ID_TO_CHINESE_NAME:
+    print("[WARNING] ITEM_ID_TO_CHINESE_NAME 为空。翻译可能无法正常工作。")
+    ITEM_ID_TO_CHINESE_NAME = {} # 回退到空字典以防止 NameError，尽管翻译会丢失。
+
+SHULKER_BOX_IDS = {
+    "minecraft:shulker_box", "minecraft:white_shulker_box", "minecraft:orange_shulker_box",
+    "minecraft:magenta_shulker_box", "minecraft:light_blue_shulker_box", "minecraft:yellow_shulker_box",
+    "minecraft:lime_shulker_box", "minecraft:pink_shulker_box", "minecraft:gray_shulker_box",
+    "minecraft:light_gray_shulker_box", "minecraft:cyan_shulker_box", "minecraft:purple_shulker_box",
+    "minecraft:blue_shulker_box", "minecraft:brown_shulker_box", "minecraft:green_shulker_box",
+    "minecraft:red_shulker_box", "minecraft:black_shulker_box"
+}
+
+ITEM_FRAME_ITEM_TAG = "Item" # 物品展示框中物品的NBT标签名
+CHEST_MINECART_ITEMS_TAG = "Items" #运输矿车中物品列表的NBT标签名
+ITEM_BEARING_ENTITY_IDS = { # 包含物品作为NBT一部分的实体ID及其物品标签
+    "minecraft:item_frame": ITEM_FRAME_ITEM_TAG,
+    "minecraft:glow_item_frame": ITEM_FRAME_ITEM_TAG,
+}
+ENTITY_CONTAINER_IDS = { # 作为容器的实体ID及其物品列表标签
+    "minecraft:chest_minecart": CHEST_MINECART_ITEMS_TAG,
+    "minecraft:hopper_minecart": CHEST_MINECART_ITEMS_TAG,
+}
+AIR_BLOCK_IDS = {"minecraft:air", "minecraft:cave_air", "minecraft:void_air"} #空气方块ID集合
+
+MAX_STACK_SIZES = { # 定义各种物品的最大堆叠数量
+    "DEFAULT": 64, # 默认堆叠大小
+    "minecraft:ender_pearl": 16,
+    "minecraft:snowball": 16,
+    "minecraft:egg": 16,
+    "minecraft:sign": 16, # 木牌
+    "minecraft:written_book": 1, # 成书
+    "minecraft:writable_book": 1, # 书与笔
+    "minecraft:enchanted_book": 1, # 附魔书
+    "minecraft:bucket": 16, # 空桶堆叠16
+    "minecraft:lava_bucket": 1,
+    "minecraft:water_bucket": 1,
+    "minecraft:milk_bucket": 1,
+    "minecraft:powder_snow_bucket": 1,
+    "minecraft:axolotl_bucket": 1,
+    "minecraft:cod_bucket": 1,
+    "minecraft:pufferfish_bucket": 1,
+    "minecraft:salmon_bucket": 1,
+    "minecraft:tadpole_bucket": 1,
+    "minecraft:tropical_fish_bucket": 1,
+    "minecraft:minecart": 1, # 矿车
+    "minecraft:chest_minecart": 1, # 运输矿车
+    "minecraft:furnace_minecart": 1, # 动力矿车
+    "minecraft:hopper_minecart": 1, # 漏斗矿车
+    "minecraft:tnt_minecart": 1, # TNT矿车
+    "minecraft:saddle": 1, # 鞍
+    "minecraft:potion": 1, # 药水
+    "minecraft:splash_potion": 1, # 喷溅药水
+    "minecraft:lingering_potion": 1, # 滞留药水
+    "minecraft:shield": 1, # 盾牌
+    "minecraft:flint_and_steel": 1, # 打火石
+    "minecraft:shears": 1, # 剪刀
+    "minecraft:bow": 1, # 弓
+    "minecraft:crossbow": 1, # 弩
+    "minecraft:fishing_rod": 1, # 钓鱼竿
+    "minecraft:trident": 1, # 三叉戟
+    "minecraft:elytra": 1, # 鞘翅
+    "minecraft:diamond_sword": 1, # 剑（所有材质）
+    "minecraft:diamond_pickaxe": 1, # 镐（所有材质）
+    "minecraft:diamond_axe": 1, # 斧（所有材质）
+    "minecraft:diamond_shovel": 1, # 锹（所有材质）
+    "minecraft:diamond_hoe": 1, # 锄（所有材质）
+    "minecraft:diamond_helmet": 1, # 头盔（所有材质）
+    "minecraft:diamond_chestplate": 1, # 胸甲（所有材质）
+    "minecraft:diamond_leggings": 1, # 护腿（所有材质）
+    "minecraft:diamond_boots": 1, # 靴子（所有材质）
+    "minecraft:netherite_sword": 1,
+    "minecraft:netherite_pickaxe": 1,
+    "minecraft:netherite_axe": 1,
+    "minecraft:netherite_shovel": 1,
+    "minecraft:netherite_hoe": 1,
+    "minecraft:netherite_helmet": 1,
+    "minecraft:netherite_chestplate": 1,
+    "minecraft:netherite_leggings": 1,
+    "minecraft:netherite_boots": 1,
+    "minecraft:totem_of_undying": 1, # 图腾
+    "minecraft:cake": 1, # 蛋糕
+    "minecraft:bed": 1, # 床 (所有颜色)
+    "minecraft:music_disc_13": 1, # 音乐唱片 (所有类型)
+    "minecraft:music_disc_cat": 1,
+    # 根据需要添加更多，特别是工具、盔甲、独特物品
+}
+
+# --- 数据类 ---
+@dataclass
+class ProcessedItem:
+    item_id: str
+    count: int
+    nbt_dict: dict = field(default_factory=dict)
+
+# --- 函数 ---
+def load_schematic(filepath: str) -> litemapy.Schematic:
+    """加载 .litematic 文件并返回一个 Schematic 对象。"""
+    try:
+        schematic = litemapy.Schematic.load(filepath)
+        return schematic
+    except Exception as e:
+        print(f"加载投影文件 {filepath} 时出错: {e}")
+        raise
+
+def extract_nbt_info(item_stack_nbt: Compound | None) -> dict:
+    """从物品的NBT数据中提取简化信息（如自定义名称，附魔）。"""
+    
+    extracted = {} # 存储提取出的NBT信息
+    
+    components_tag = item_stack_nbt.get('components') # 现代版本 (1.20.2+) 的NBT存储在 components 中
+    
+    if components_tag and isinstance(components_tag, Compound):
+        # 提取自定义名称 (minecraft:custom_name)
+        custom_name_tag_str = components_tag.get('minecraft:custom_name')
+        if custom_name_tag_str and isinstance(custom_name_tag_str, String):
+            name_val = str(custom_name_tag_str)
+            try:
+                # 尝试解析JSON结构的名称 (例如由 tellraw 命令生成的名称)
+                if name_val.startswith('{') and name_val.endswith('}') or name_val.startswith('[') and name_val.endswith(']'):
+                    name_data = json.loads(name_val)
+                    parsed_name = None
+                    if isinstance(name_data, dict):
+                        # 首先尝试顶层的 'text' 字段
+                        if 'text' in name_data and name_data['text']:
+                            parsed_name = str(name_data['text'])
+                        # 如果顶层 'text' 为空或不存在, 检查 'extra' 字段
+                        elif 'extra' in name_data and isinstance(name_data['extra'], list) and name_data['extra']:
+                            first_extra = name_data['extra'][0]
+                            if isinstance(first_extra, dict) and 'text' in first_extra and first_extra['text']:
+                                parsed_name = str(first_extra['text'])
+                    elif isinstance(name_data, list) and name_data and isinstance(name_data[0], dict) and 'text' in name_data[0] and name_data[0]['text']: # 处理 [{'text':...}] 结构
+                         parsed_name = str(name_data[0]['text'])
+                    
+                    if parsed_name is not None:
+                        extracted['name'] = parsed_name
+                    else: # 如果未找到合适的文本，则回退到原始JSON字符串
+                        extracted['name'] = name_val 
+                elif name_val.startswith('"') and name_val.endswith('"') and len(name_val) > 1: # 处理简单带引号的字符串
+                    extracted['name'] = name_val[1:-1]
+                else: # 其他情况直接使用原始值
+                    extracted['name'] = name_val 
+            except json.JSONDecodeError:
+                # 如果JSON解析失败，则使用原始字符串 (如果适用，先去除基本引号)
+                if name_val.startswith('"') and name_val.endswith('"') and len(name_val) > 1:
+                    extracted['name'] = name_val[1:-1]
+                else:
+                    extracted['name'] = name_val
+            except Exception as e: # 其他解析名称时的异常
+                 print(f"[WARN NBT_EXTRACT_NAME_COMPONENT] 处理 custom_name 组件时出错: {e}. 原始值: {name_val}")
+                 extracted['name'] = name_val # 回退到原始值
+
+        # 提取附魔信息 (minecraft:enchantments)
+        enchantments_component = components_tag.get('minecraft:enchantments')
+        if enchantments_component and isinstance(enchantments_component, Compound):
+            levels_tag = enchantments_component.get('levels') # 附魔等级存储在 'levels' 子Compound中
+            if levels_tag and isinstance(levels_tag, Compound):
+                enchants = {}
+                for ench_id_str, lvl_tag in levels_tag.items(): 
+                    if isinstance(lvl_tag, (Int, Short, Byte)):
+                        enchants[str(ench_id_str)] = int(lvl_tag)
+                if enchants:
+                    extracted['enchantments'] = tuple(sorted(enchants.items())) # 转换为可哈希的元组
+        
+    # 如果未能从 'components' 中提取名称，尝试旧版NBT路径 ('display.Name')
+    if 'name' not in extracted: 
+        display_tag = item_stack_nbt.get('display') # 旧版NBT的显示信息在 'display' 标签下
+        if display_tag and isinstance(display_tag, Compound):
+            name_tag = display_tag.get('Name') # 名称在 'Name' 标签下
+            if name_tag and isinstance(name_tag, String):
+                try:
+                    # 旧版名称也可能是JSON字符串
+                    name_val = str(name_tag.value)
+                    if name_val.startswith('{') and name_val.endswith('}') or name_val.startswith('[') and name_val.endswith(']'):
+                         name_data = json.loads(name_val)
+                         if isinstance(name_data, dict) and 'text' in name_data: # 提取 'text' 字段
+                             extracted['name'] = str(name_data['text'])
+                         elif isinstance(name_data, list) and name_data and isinstance(name_data[0], dict) and 'text' in name_data[0]: # 处理 [{'text':...}]
+                             extracted['name'] = str(name_data[0]['text'])
+                         else: # 回退
+                             extracted['name'] = name_val
+                    else: # 非JSON的简单字符串
+                        extracted['name'] = name_val
+                except json.JSONDecodeError:
+                    extracted['name'] = str(name_tag.value) # JSON解析失败则回退
+                except Exception as e: # 其他访问 .value 属性的错误
+                    extracted['name'] = str(name_tag) # 使用 str() 作为最终回退
+                    print(f"[WARN NBT_EXTRACT_FALLBACK] 访问 Name.value (旧方法) 出错: {e}. 使用 str() 转换: {extracted['name']}")
+    
+    # 如果未能从 'components' 中提取附魔，尝试旧版NBT路径 ('Enchantments' 列表)
+    if 'enchantments' not in extracted: 
+        ench_list_tag = item_stack_nbt.get('Enchantments') # 旧版附魔是 'Enchantments' 标签下的列表
+        if ench_list_tag and isinstance(ench_list_tag, List) and \
+           hasattr(ench_list_tag, 'subtype') and ench_list_tag.subtype == Compound: # 列表元素应为Compound
+            enchants = {}
+            for enchant_compound in ench_list_tag: # 遍历每个附魔Compound
+                if 'id' in enchant_compound and isinstance(enchant_compound['id'], String) and \
+                   'lvl' in enchant_compound and isinstance(enchant_compound['lvl'], (Short, Int, Byte)):
+                    enchants[str(enchant_compound['id'])] = int(enchant_compound['lvl'])
+            if enchants:
+                extracted['enchantments'] = tuple(sorted(enchants.items())) # 转换为可哈希元组
+
+    # 提取药水信息 (旧版 'Potion' 标签)
+    if 'potion' not in extracted: # 'minecraft:potion_contents' 在 'components' 中是更现代的方式，但此处简单处理旧版
+        potion_tag = item_stack_nbt.get('Potion') 
+        if potion_tag and isinstance(potion_tag, String):
+            extracted['potion'] = str(potion_tag)
+
+    return extracted
+
+def process_item_nbt(item_tag_compound: Compound, material_list: list[ProcessedItem], recursion_depth=0):
+    """处理单个物品的NBT数据，提取信息并添加到材料列表。支持递归处理潜影盒。"""
+    
+    # --- 新增：预处理 item_tag_compound ---
+    # 检查传入的NBT是否是包含 'slot' 和嵌套 'item' 的结构 (常见于容器内的物品列表)
+    # 如果是，则真正的物品NBT在 'item' 子标签下
+    actual_item_nbt = item_tag_compound
+    if 'slot' in item_tag_compound and 'item' in item_tag_compound and \
+       isinstance(item_tag_compound.get('item'), Compound): # Safely get 'item'
+        actual_item_nbt = item_tag_compound['item']
+    # --- 结束新增的预处理 ---
+
+    if not actual_item_nbt or not isinstance(actual_item_nbt, Compound):
+        return 
+    try:
+        item_id_tag = actual_item_nbt.get('id')
+        count_tag = actual_item_nbt.get('Count') 
+        if count_tag is None: 
+            count_tag = actual_item_nbt.get('count')
+
+        if not (item_id_tag and isinstance(item_id_tag, String) and \
+                count_tag and isinstance(count_tag, (Byte, Int))):
+            return
+
+        item_id_str = str(item_id_tag) 
+        count_int = int(count_tag)   
+        simple_nbt_dict = extract_nbt_info(actual_item_nbt) 
+        material_list.append(ProcessedItem(item_id=item_id_str, count=count_int, nbt_dict=simple_nbt_dict))
+        # 潜影盒递归处理
+        # 现代潜影盒NBT在 'components' -> 'minecraft:container' -> 物品列表
+        # 旧版潜影盒NBT在 item_tag_compound -> 'BlockEntityTag' -> 'Items'
+        # 当潜影盒作为物品存放在容器中时, 其BlockEntity数据可能包裹在顶层的 'tag' Compound下
+        if item_id_str in SHULKER_BOX_IDS and recursion_depth < MAX_RECURSION_DEPTH:
+            shulker_items_list = None 
+            container_nbt_source = actual_item_nbt 
+            potential_tag_compound = actual_item_nbt.get('tag')
+            if potential_tag_compound and isinstance(potential_tag_compound, Compound):
+                container_nbt_source = potential_tag_compound
+            else:
+                pass
+            # 现在从确定的 container_nbt_source 查找实际的物品列表
+            components_tag = container_nbt_source.get('components')
+            if components_tag and isinstance(components_tag, Compound):
+                container_component = components_tag.get('minecraft:container') 
+                if container_component and isinstance(container_component, List) and \
+                   hasattr(container_component, 'subtype') and container_component.subtype == Compound:
+                    shulker_items_list = container_component
+            if shulker_items_list is None: 
+                block_entity_tag_old = container_nbt_source.get('BlockEntityTag') 
+                if block_entity_tag_old and isinstance(block_entity_tag_old, Compound):
+                    items_list_old = block_entity_tag_old.get('Items') 
+                    if items_list_old and isinstance(items_list_old, List) and \
+                       hasattr(items_list_old, 'subtype') and items_list_old.subtype == Compound:
+                        shulker_items_list = items_list_old
+            if shulker_items_list: 
+                for idx, sub_item_nbt in enumerate(shulker_items_list): 
+                    process_item_nbt(sub_item_nbt, material_list, recursion_depth + 1)
+            else:
+                pass
+    except Exception as e:
+        print(f"处理物品NBT时出错: {e} - 物品数据: {actual_item_nbt}")
+
+def get_materials_from_schematic(schematic: litemapy.Schematic) -> list[ProcessedItem]:
+    """从投影中提取所有材料，包括TileEntities和Entities中的材料。"""
+    material_list: list[ProcessedItem] = []
+    if not schematic or not hasattr(schematic, 'regions') or not schematic.regions:
+        return material_list # 无效投影或区域则返回空列表
+    for region_name, region in schematic.regions.items(): # 遍历每个区域
+        if not region: continue # 跳过无效区域
+        min_x, min_y, min_z = region.minx(), region.miny(), region.minz()
+        max_x, max_y, max_z = region.maxx(), region.maxy(), region.maxz()
+        # 1. 遍历区域中的所有方块状态
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                for z in range(min_z, max_z + 1):
+                    try:
+                        block_state = region[x, y, z] # 获取方块状态
+                        bs_id = getattr(block_state, 'id', None) # 获取方块ID
+                        if bs_id is not None: # 确保ID有效
+                            is_air = bs_id in AIR_BLOCK_IDS # 判断是否为空气方块
+                            if not is_air: # 非空气方块则添加到列表
+                                material_list.append(ProcessedItem(item_id=bs_id, count=1, nbt_dict={}))
+                    except IndexError: # 坐标越界则跳过
+                        pass
+        # 2. 处理区域中的TileEntities (如箱子, 熔炉, 唱片机等)
+        if hasattr(region, 'tile_entities') and region.tile_entities:
+            for tile_entity in region.tile_entities:
+                # 确保tile_entity及其NBT数据有效
+                if not tile_entity or not hasattr(tile_entity, 'data') or not isinstance(getattr(tile_entity, 'data', None), Compound):
+                    continue
+                te_nbt: Compound = tile_entity.data # 获取TileEntity的NBT数据
+                # 处理包含 'Items' 列表的TileEntity (如箱子, 漏斗, 发射器等)
+                if 'Items' in te_nbt and isinstance(te_nbt['Items'], List):
+                    # 确保 'Items' 列表的子类型是Compound (代表每个物品的NBT)
+                    if hasattr(te_nbt['Items'], 'subtype') and te_nbt['Items'].subtype == Compound:
+                        for item_tag_compound in te_nbt['Items']: # 遍历每个物品
+                            process_item_nbt(item_tag_compound, material_list) # 处理该物品
+                # 处理唱片机中的唱片 ('RecordItem')
+                elif 'RecordItem' in te_nbt and isinstance(te_nbt['RecordItem'], Compound):
+                    process_item_nbt(te_nbt['RecordItem'], material_list) # 处理唱片
+        # 3. 处理区域中的Entities (如物品展示框, 带箱子的矿车等)
+        if hasattr(region, 'entities') and region.entities:
+            for entity in region.entities:
+                # 优先使用 entity.data, 回退到 entity.nbt (旧版litemapy可能用nbt)
+                actual_entity_nbt = None
+                if hasattr(entity, 'data') and isinstance(entity.data, Compound):
+                    actual_entity_nbt = entity.data
+                elif hasattr(entity, 'nbt') and isinstance(entity.nbt, Compound): # Fallback
+                    actual_entity_nbt = entity.nbt 
+                # 确保实体,其实体NBT和实体ID均有效
+                if not entity or actual_entity_nbt is None or not hasattr(entity, 'id'): 
+                    continue
+                entity_nbt: Compound = actual_entity_nbt 
+                entity_id_str: str = entity.id # 获取实体ID
+                # 处理物品展示框类的实体 (ITEM_BEARING_ENTITY_IDS)
+                if entity_id_str in ITEM_BEARING_ENTITY_IDS:
+                    item_tag_key = ITEM_BEARING_ENTITY_IDS[entity_id_str] # 获取该实体存储物品的NBT键名
+                    # 如果实体NBT中包含该键，并且其值是一个Compound (代表物品)
+                    if item_tag_key in entity_nbt and isinstance(entity_nbt[item_tag_key], Compound):
+                        item_compound = entity_nbt[item_tag_key] # 提取物品的NBT
+                        process_item_nbt(item_compound, material_list) # 处理此物品
+                    # 将物品展示框实体本身也作为一种材料添加到列表中
+                    material_list.append(ProcessedItem(item_id=entity_id_str, count=1, nbt_dict={}))
+                # 处理实体容器 (ENTITY_CONTAINER_IDS, 如带箱子的矿车)
+                elif entity_id_str in ENTITY_CONTAINER_IDS:
+                    items_tag_key = ENTITY_CONTAINER_IDS[entity_id_str] # 获取该实体存储物品列表的NBT键名
+                    # 如果实体NBT中包含该键，并且其值是一个List (代表物品列表)
+                    if items_tag_key in entity_nbt and isinstance(entity_nbt[items_tag_key], List):
+                        # 确保列表的子类型是Compound
+                        if hasattr(entity_nbt[items_tag_key], 'subtype') and entity_nbt[items_tag_key].subtype == Compound:
+                            for item_tag_compound_from_entity in entity_nbt[items_tag_key]: # 遍历每个物品
+                                process_item_nbt(item_tag_compound_from_entity, material_list) # 处理该物品
+    return material_list
+
+def aggregate_materials(processed_items: list[ProcessedItem]) -> tuple[dict[tuple[str, frozenset], int], dict[tuple[str, frozenset], dict]]:
+    """聚合处理过的物品列表，统计具有相同ID和NBT的物品数量。"""
+    aggregated_counts: dict[tuple[str, frozenset], int] = {} # 存储聚合后的物品计数 { (item_id, frozenset(nbt_items)), count }
+    nbt_originals: dict[tuple[str, frozenset], dict] = {}     # 存储每个唯一NBT组合的原始NBT字典，用于后续显示
+    for item in processed_items:
+        # 确保nbt_dict中的所有值都是可哈希的，以便创建frozenset
+        # 当前的 extract_nbt_info 应确保生成可哈希类型 (字符串, 整数, 或元组)
+        try:
+            # 对NBT字典的条目进行排序并创建frozenset，作为聚合的键的一部分
+            nbt_summary_key_items = frozenset(sorted(item.nbt_dict.items()))
+        except TypeError as te: # 如果NBT字典中包含不可哈希类型 (例如列表)，则会出错
+            print(f"[ERROR AGGREGATE] 创建NBT的frozenset时发生TypeError: {item.nbt_dict}. 物品ID: {item.item_id}. 错误: {te}")
+            # 使用一个通用的NBT键进行回退，以避免程序崩溃，但这可能导致物品聚合不准确
+            nbt_summary_key_items = frozenset(("_problematic_nbt_", str(item.nbt_dict)))
+        key = (item.item_id, nbt_summary_key_items) # 使用 (物品ID, NBT摘要) 作为聚合键
+        aggregated_counts[key] = aggregated_counts.get(key, 0) + item.count # 累加数量
+        if key not in nbt_originals: # 如果是首次遇到此NBT组合，则存储其原始NBT字典
+            nbt_originals[key] = item.nbt_dict
+    return aggregated_counts, nbt_originals
+
+def format_nbt_for_display(item_id: str, nbt_dict: dict) -> str:
+    """将提取的NBT信息格式化为人类可读的字符串，用于CSV输出。"""
+    if not nbt_dict: # 如果NBT字典为空
+        return "标准" # 返回"标准"
+    parts = [] # 用于存储NBT信息的各个部分
+    # 自定义名称
+    if 'name' in nbt_dict:
+        # 名称可能是现代Minecraft文本组件的JSON字符串。
+        # 理想的解决方案是解析此JSON，但目前我们直接显示它。
+        # 如果是简单文本，它看起来会很好。如果是JSON，它会可读但冗长。
+        parts.append(f"名称: {nbt_dict['name']}")
+    # 附魔
+    # 期望附魔为元组的元组, 例如 (('minecraft:sharpness', 5), ('minecraft:unbreaking', 3))
+    if 'enchantments' in nbt_dict and isinstance(nbt_dict['enchantments'], tuple) and nbt_dict['enchantments']:
+        enchant_strings = []
+        # nbt_dict['enchantments'] 如果来自 extract_nbt_info，则已经排序
+        for ench_id, lvl in nbt_dict['enchantments']: 
+            simple_ench_name = ench_id.split(':')[-1].replace('_', ' ').capitalize() # 简化附魔名称 (例如 "minecraft:sharpness" -> "Sharpness")
+            # 将等级转换为罗马数字 (基础版)
+            roman_lvl = {1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V'}.get(lvl, str(lvl))
+            enchant_strings.append(f"{simple_ench_name} {roman_lvl}")
+        if enchant_strings:
+            parts.append(f"附魔: {', '.join(enchant_strings)}")
+    # 药水 (示例结构 - 需要更多数据来获取药水名称/效果)
+    # 这是一个占位符，实际的药水逻辑将涉及将药水ID映射到名称/效果。
+    if 'potion' in nbt_dict:
+        potion_name = nbt_dict['potion'].split(':')[-1].replace('_', ' ').capitalize() # 简化药水ID为名称
+        parts.append(f"药水: {potion_name}")
+    if 'custom_potion_effects' in nbt_dict: # 在 extract_nbt_info 示例中这被简化为 True
+        parts.append("自定义效果") # 这是一个非常简化的表示
+    # 在此添加更多NBT格式化，随着 extract_nbt_info 中提取新类型 (例如，头颅所有者，书本内容等)
+    if not parts: # 如果NBT字典有键但没有一个被格式化
+        return "标准" 
+    return "; ".join(parts) # 用分号连接所有NBT信息部分
+
+def calculate_shulkers(quantity: int, item_id: str) -> float:
+    """计算给定数量的物品需要多少个潜影盒。"""
+    # 获取物品的堆叠大小，如果未找到则默认为 MAX_STACK_SIZES["DEFAULT"]
+    stack_size = MAX_STACK_SIZES.get(item_id, MAX_STACK_SIZES.get("DEFAULT", 64))
+    if stack_size <= 0: # 不应发生，但作为安全措施
+        stack_size = 1 
+    slots_needed = math.ceil(quantity / stack_size) # 计算需要的格子数
+    shulkers_needed = slots_needed / 27.0 # 标准潜影盒有27格
+    # 返回2-3位小数，例如，如果需要，稍后在CSV写入阶段使用round()或字符串格式化
+    # 目前直接返回浮点数。格式化可以在写入CSV时完成。
+    return round(shulkers_needed, 3) # 目前四舍五入到3位小数
+
+def get_item_display_name(item_id: str) -> str:
+    """根据物品ID生成显示名称，优先使用中文名称（如果可用）。"""
+    if item_id in ITEM_ID_TO_CHINESE_NAME and ITEM_ID_TO_CHINESE_NAME[item_id]: # 确保中文名非空
+        retrieved_name = ITEM_ID_TO_CHINESE_NAME[item_id]
+        return retrieved_name
+    # 回退到处理英文ID的逻辑
+    return item_id.split(':')[-1].replace('_', ' ').capitalize() # 将 "minecraft:some_item" 转为 "Some item"
+
+def write_to_csv(aggregated_counts: dict[tuple[str, frozenset], int], 
+                 nbt_originals: dict[tuple[str, frozenset], dict], 
+                 output_filepath: str):
+    """将聚合后的材料列表写入CSV文件。"""
+    fieldnames = ["物品名称", "物品ID", "NBT信息", "数量 (个)", "数量 (潜影盒)"] # CSV表头
+
+    try:
+        with open(output_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile: # 使用 utf-8-sig 以支持Excel中的中文
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader() # 写入表头
+            # 按总数量降序排序，然后按物品显示名称升序排序
+            sorted_items = sorted(
+                aggregated_counts.items(), 
+                key=lambda item: (-item[1], get_item_display_name(item[0][0]), item[0][0]) 
+                                # item[1] 是数量
+                                # item[0][0] 是 item_id, 用于生成显示名称
+            )
+            for (item_id_str, nbt_summary_key), quantity_count in sorted_items: # 遍历排序后的物品
+                original_nbt_dict = nbt_originals.get((item_id_str, nbt_summary_key), {}) # 获取原始NBT
+                
+                item_name_display = get_item_display_name(item_id_str) # 获取显示名称
+                nbt_info_display = format_nbt_for_display(item_id_str, original_nbt_dict) # 格式化NBT信息
+                quantity_shulkers = calculate_shulkers(quantity_count, item_id_str) # 计算潜影盒数量
+                writer.writerow({ # 写入行数据
+                    "物品名称": item_name_display,
+                    "物品ID": item_id_str,
+                    "NBT信息": nbt_info_display,
+                    "数量 (个)": quantity_count,
+                    "数量 (潜影盒)": f"{quantity_shulkers:.3f}" # 格式化为3位小数的字符串
+                })
+        print(f"成功将材料列表写入 {output_filepath}")
+    except IOError as e:
+        print(f"写入CSV文件 {output_filepath} 时发生IO错误: {e}")
+    except Exception as e:
+        print(f"写入CSV时发生意外错误: {e}")
+
+def main():
+    """主函数，用于解析参数并运行材料计数过程。"""
+    parser = argparse.ArgumentParser(description="Litematica 材料计数器 - 统计 .litematic 文件中的材料，包括容器内容物。")
+    parser.add_argument("input_file", help="输入的 .litematic 文件路径。")
+    parser.add_argument("-o", "--output", help="输出的 CSV 文件路径。默认为 '输入文件名_materials.csv'。", default=None)
+    args = parser.parse_args() # 解析命令行参数
+    input_filepath = args.input_file
+    output_filepath = args.output
+    if not os.path.exists(input_filepath): # 检查输入文件是否存在
+        print(f"错误: 输入文件未找到: {input_filepath}")
+        return
+    if not input_filepath.lower().endswith('.litematic'): # 检查文件扩展名
+        print(f"警告: 输入文件 '{input_filepath}' 没有 .litematic 扩展名。")
+    if output_filepath is None: # 如果未指定输出路径，则根据输入文件名生成
+        base, ext = os.path.splitext(input_filepath)
+        output_filepath = f"{base}_materials.csv"
+    print(f"正在处理投影: {input_filepath}")
+    print(f"输出将保存至: {output_filepath}")
+    try:
+        schematic = load_schematic(input_filepath) # 加载投影
+        if not schematic:
+            print("加载投影失败。正在退出。")
+            return
+        print("投影加载完毕。正在提取材料...")
+        processed_items = get_materials_from_schematic(schematic) # 提取材料
+        if not processed_items: # 如果没有提取到物品
+            print("未从投影中找到或提取到材料。")
+        print(f"已提取 {len(processed_items)} 个原始物品条目。正在聚合...")
+        aggregated_counts, nbt_originals = aggregate_materials(processed_items) # 聚合材料
+        print(f"已聚合为 {len(aggregated_counts)} 种独特的材料类型。正在写入CSV...")
+        write_to_csv(aggregated_counts, nbt_originals, output_filepath) # 写入CSV
+    except Exception as e:
+        print(f"在材料计数过程中发生错误: {e}")
+
+if __name__ == "__main__":
+    main()
