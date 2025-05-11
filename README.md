@@ -1,19 +1,34 @@
-# Litematica Material Counter
+<h1 align="center">Litematica Material Counter</h1>
 
-## 简介
+<p align="center">
+  <b>投影材料统计工具</b>
+</p>
+<p align="center">
+    <a href="LICENSE">
+        <img src="https://img.shields.io/badge/License-GPL--3.0-important?style=for-the-badge">
+    </a>
+    <a href="https://qm.qq.com/q/Spt6kcvVwk">
+        <img src="https://img.shields.io/badge/QQ-技术交流/反馈群-blue?style=for-the-badge">
+    </a>
+    <a href="https://space.bilibili.com/288309681">
+        <img src="https://img.shields.io/badge/bilibili-TianKong_y-pink?style=for-the-badge">
+    </a>
+</p>
+
+## > 简介
 Litematica Material Counter 是一个 Python 脚本，用于精确统计 `.litematic` 投影文件中的所有建筑材料。它能够深入容器（如箱子、潜影盒）内部进行统计，区分不同NBT数据的物品（例如自定义名称、附魔），最终将统计结果输出为易于阅读和处理的 CSV 文件。
 
-## 功能特点
+## > 功能特点
 *   **全面统计**: 统计投影中的所有方块和可获取的实体（如物品展示框本身），并递归统计标准容器（箱子、木桶、发射器、投掷器、漏斗等）以及潜影盒内部的物品。
 *   **NBT区分**: 能够识别并区分具有不同NBT标签的同一ID物品，例如不同自定义名称的工具或不同附魔等级的书籍。
 *   **CSV输出**: 生成详细的CSV格式报告，包含物品的（中文）名称、命名空间ID、NBT信息摘要、总数量以及估算存储所需的潜影盒数量。
 
-## 依赖项
+## > 依赖项
 *   Python 3.7+ (推荐 3.9+)
 *   `litemapy` (用于解析 `.litematic` 文件)
 *   `nbtlib` (用于处理NBT数据)
 
-## 安装与使用
+## > 安装与环境配置
 
 1.  **克隆或下载项目**
 
@@ -23,7 +38,7 @@ Litematica Material Counter 是一个 Python 脚本，用于精确统计 `.litem
     pip install -r requirements.txt
     ```
 
-## 使用方法
+## > 使用方法
 
 在项目根目录打开cmd或Powershell，通过命令行运行 `material_counter.py` 脚本。
 
@@ -33,7 +48,7 @@ Litematica Material Counter 是一个 Python 脚本，用于精确统计 `.litem
 python ./material_counter.py ./schematics/{投影文件名称}.litematic
 ```
 
-## 输出CSV格式说明
+## > 输出CSV格式说明
 
 在导入的投影文件的同一级目录下，会生成一个{投影文件名称}_materials.csv
 输出的CSV文件包含以下列：
@@ -49,7 +64,23 @@ python ./material_counter.py ./schematics/{投影文件名称}.litematic
 *   `数量 (个)`: 该物品（具有相同ID和NBT信息）在投影中的总数量。
 *   `数量 (潜影盒)`: 根据标准27格潜影盒计算，存储这么多物品大约需要多少个潜影盒。结果保留3位小数。
 
-## 贡献
-欢迎通过 Issue 或 Pull Request 提出改进建议或代码贡献。
+## > 更新日志
 
-## 鸣谢
+- v1.0.0 2025.5.11 初始版本
+
+## > 作者&技术交流/反馈群
+
+- bilibili：[TianKong_y](https://space.bilibili.com/288309681)
+- QQ：[技术交流/反馈群](https://qm.qq.com/q/Spt6kcvVwk)
+
+## > 鸣谢
+
+- Albertchen857 本项目参考了[LitematicaViewer](https://github.com/albertchen857/LitematicaViewer)的投影文件读取、容器分析功能的实现
+
+## > 项目统计
+
+<div align="center">
+
+![Repobeats analytics image](https://repobeats.axiom.co/api/embed/6bcdef5690100bb1d892074eae94d2231d96bee7.svg "Repobeats analytics image")
+
+</div>
