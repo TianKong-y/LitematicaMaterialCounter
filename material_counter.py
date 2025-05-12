@@ -470,11 +470,14 @@ def write_to_csv(aggregated_counts: dict[tuple[str, frozenset], int],
 
 def main():
     """主函数，用于解析参数并运行材料计数过程。"""
+    output_filepath = None
     print("请在新窗口选择文件")
     input_filepath = tkinter.filedialog.askopenfilename(title='打开投影文件',
                                            filetypes=[('投影文件', '*.litematic'),('All files', '*')])
+    output_filepath = tkinter.filedialog.asksaveasfilename(title='保存投影文件',
+                                           defaultextension=".txt",
+                                           filetypes=[('元数据格式文件', '*.csv')])
     print("已选择文件:" + input_filepath)
-    output_filepath = None
     if not os.path.exists(input_filepath): # 检查输入文件是否存在
         print(f"错误: 输入文件未找到: {input_filepath}")
         return
