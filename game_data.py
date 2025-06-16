@@ -46,17 +46,34 @@ SPECIAL_HANDLING_BLOCKS = {
 
 # --- 实体处理常量 ---
 # 这些是通用的实体类别ID。代码将通过检查实体的'Type' NBT标签来确定具体的物品ID。
-COUNTABLE_ENTITIES = {
-    "minecraft:minecart",
-    "minecraft:chest_minecart",
-    "minecraft:furnace_minecart",
-    "minecraft:tnt_minecart",
-    "minecraft:hopper_minecart",
-    "minecraft:command_block_minecart",
-    "minecraft:spawner_minecart",
-    "minecraft:boat",
-    "minecraft:chest_boat",
-    "minecraft:armor_stand",
+
+# 移除旧的白名单制实体列表
+# COUNTABLE_ITEM_ENTITIES, PASSIVE_MOBS, NEUTRAL_MOBS, HOSTILE_MOBS
+
+# 新增：实体黑名单。在统计时将忽略这些实体。
+ENTITIES_TO_IGNORE = {
+    "minecraft:area_effect_cloud",
+    "minecraft:arrow",
+    "minecraft:dragon_fireball",
+    "minecraft:egg",
+    "minecraft:experience_bottle",
+    "minecraft:experience_orb",
+    "minecraft:eye_of_ender",
+    "minecraft:falling_block",
+    "minecraft:firework_rocket",
+    "minecraft:fishing_bobber",
+    "minecraft:interaction", # 1.19.4+ interaction entity
+    "minecraft:llama_spit",
+    "minecraft:marker",
+    "minecraft:potion", # Thrown potion entity
+    "minecraft:small_fireball",
+    "minecraft:snowball",
+    "minecraft:spectral_arrow",
+    "minecraft:text_display",
+    "minecraft:item_display",
+    "minecraft:block_display",
+    "minecraft:trident",
+    "minecraft:wither_skull",
 }
 
 # 包含单个物品的实体 (如物品展示框)

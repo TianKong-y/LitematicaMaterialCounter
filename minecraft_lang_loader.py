@@ -14,17 +14,20 @@ def load_translations(lang_file_relative_path='./lang/zh_cn.json'):
         # Process Blocks
         if 'Blocks' in data and isinstance(data['Blocks'], dict):
             for key, value in data['Blocks'].items():
-                translations[f"minecraft:{key}"] = value
+                translations[f"block.minecraft.{key}"] = value
         
         # Process Items
         if 'Items' in data and isinstance(data['Items'], dict):
             for key, value in data['Items'].items():
-                # Items might overwrite Blocks if keys are identical after prefixing,
-                # which is usually fine as item names are often preferred.
-                translations[f"minecraft:{key}"] = value
+                translations[f"item.minecraft.{key}"] = value
+        
+        # Process Entities
+        if 'Entities' in data and isinstance(data['Entities'], dict):
+            for key, value in data['Entities'].items():
+                translations[f"entity.minecraft.{key}"] = value
         
         # Optionally, process other categories if needed in the future
-        # e.g., Entities, Biomes etc.
+        # e.g., Biomes etc.
 
     except FileNotFoundError:
         print(f"[ERROR] Minecraft language file not found at: {absolute_lang_file_path}")
