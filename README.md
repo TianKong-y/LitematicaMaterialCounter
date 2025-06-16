@@ -5,13 +5,13 @@
 </p>
 <p align="center">
     <a href="LICENSE">
-        <img src="https://img.shields.io/badge/License-GPL--3.0-important?style=for-the-badge">
+        <img src="https://img.shields.io/badge/License-GPL--3.0-important?style=for-the-badge" alt="License">
     </a>
     <a href="https://qm.qq.com/q/Spt6kcvVwk">
-        <img src="https://img.shields.io/badge/QQ-技术交流/反馈群-blue?style=for-the-badge">
+        <img src="https://img.shields.io/badge/QQ-技术交流/反馈群-blue?style=for-the-badge" alt="QQ Group">
     </a>
     <a href="https://space.bilibili.com/288309681">
-        <img src="https://img.shields.io/badge/bilibili-TianKong_y-pink?style=for-the-badge">
+        <img src="https://img.shields.io/badge/bilibili-TianKong_y-pink?style=for-the-badge" alt="Bilibili">
     </a>
 </p>
 
@@ -67,13 +67,6 @@ python ./material_counter.py ./schematics/{投影文件名称}.litematic
 
 ## > 更新日志
 
-- **v1.1.1 (2025-06-16)**
-  - **新增生物统计**: 工具现在可以递归统计投影中的所有生物（mobs），包括作为其他实体（如船、矿车）乘客的生物。
-  - **采用黑名单模式**: 移除了原有的实体白名单，改为黑名单模式，默认统计所有非技术性实体，以适应未来游戏更新。
-  - **优化输出格式**:
-    - 在最终的物料清单中，明确区分ID相同但类型不同的项目（例如，实体"鸡"与物品"生鸡肉"）。
-    - 生物在统计时不再错误地按"组"或"盒"计算，而是始终显示为个体总数。
-  - **修复翻译系统**: 全面修复了中文翻译系统，确保所有方块、物品和生物都能正确显示其名称。
 - v1.0.0 2025.5.11 初始版本
 - v1.0.1 2025.5.11 添加相同物品合并映射，使得物品ID不同但本质上相同的物品（如火把物品和火把方块）的数量合并统计，并将映射表提取到主程序之外
 - v1.1.0 2025.6.14 修复了大量方块和实体的统计问题：
@@ -82,6 +75,10 @@ python ./material_counter.py ./schematics/{投影文件名称}.litematic
   - **修复**: 修复了门和床会被重复统计为两个的问题。
   - **修复**: 活塞头等不可获取的方块现在会被正确忽略。
   - **优化**: CSV输出中的潜影盒数量统计从浮点数优化为更直观的"n盒 + n组 + n个"格式。
+- v1.1.1 2025.6.16
+  - **新增生物统计**: 工具现在可以递归统计投影中的所有生物（mobs），包括作为其他实体（如船、矿车）中乘坐的生物。
+  - **采用黑名单模式**: 移除了原有的实体白名单，改为黑名单模式，默认统计所有非技术性实体。
+  - **修复翻译系统**: 全面修复了翻译问题，确保所有类型不同（方块、物品和生物）但ID相同（如鸡与生鸡肉）都能正确显示其名称。
 
 ## > 作者&技术交流/反馈群
 
