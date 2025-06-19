@@ -635,7 +635,7 @@ def write_to_csv(aggregated_counts: dict[tuple[str, frozenset, ItemType], int],
         print(f"写入CSV时发生意外错误: {e}")
 
 def main():
-    """主函数，用于解析参数并运行材料计数过程。"""
+    """主函数，用于选择文件输入输出并运行材料计数过程。"""
 <<<<<< main
     output_filepath = None
     print("请在新窗口选择文件")
