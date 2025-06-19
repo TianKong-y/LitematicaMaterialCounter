@@ -7,6 +7,8 @@ import csv # 为CSV写入添加
 import argparse
 import os
 import sys # 为 sys.path 操作添加
+import tkinter
+import  tkinter.filedialog
 # 将脚本所在目录添加到 sys.path 以允许直接导入本地模块
 current_script_dir = os.path.dirname(os.path.abspath(__file__))
 if current_script_dir not in sys.path:
@@ -634,12 +636,15 @@ def write_to_csv(aggregated_counts: dict[tuple[str, frozenset, ItemType], int],
 
 def main():
     """主函数，用于解析参数并运行材料计数过程。"""
-    parser = argparse.ArgumentParser(description="Litematica 材料计数器 - 统计 .litematic 文件中的材料，包括容器内容物和所有生物。")
-    parser.add_argument("input_file", help="输入的 .litematic 文件路径。")
-    parser.add_argument("-o", "--output", help="输出的 CSV 文件路径。默认为 '输入文件名_materials.csv'。", default=None)
-    args = parser.parse_args() # 解析命令行参数
-    input_filepath = args.input_file
-    output_filepath = args.output
+<<<<<< main
+    output_filepath = None
+    print("请在新窗口选择文件")
+    input_filepath = tkinter.filedialog.askopenfilename(title='打开投影文件',
+                                           filetypes=[('投影文件', '*.litematic'),('All files', '*')])
+    output_filepath = tkinter.filedialog.asksaveasfilename(title='保存投影文件',
+                                           defaultextension=".txt",
+                                           filetypes=[('元数据格式文件', '*.csv')])
+    print("已选择文件:" + input_filepath)
     if not os.path.exists(input_filepath): # 检查输入文件是否存在
         print(f"错误: 输入文件未找到: {input_filepath}")
         return
