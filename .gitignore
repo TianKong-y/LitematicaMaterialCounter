@@ -6,6 +6,8 @@ __pycache__/
 *.pyd
 build/
 sdist/
+output/
+schematics/
 *.spec
 log.txt
 error.log

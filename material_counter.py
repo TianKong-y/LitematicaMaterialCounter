@@ -17,15 +17,23 @@ from minecraft_lang_loader import load_translations # 新的导入
 from id_normalization import ID_NORMALIZATION_MAP # 新增：从新文件导入ID规范化映射
 from game_data import (
     SHULKER_BOX_IDS, MAX_STACK_SIZES, ITEM_BEARING_ENTITY_IDS,
-    ENTITY_CONTAINER_IDS, AIR_BLOCK_IDS
-) # 新增：从 game_data.py 导入游戏数据常量
+    ENTITY_CONTAINER_IDS, AIR_BLOCK_IDS, BLOCKS_TO_IGNORE,
+    MULTI_ITEM_BLOCKS, SPECIAL_HANDLING_BLOCKS, ENTITIES_TO_IGNORE
+) # 新增：从 game_data.py 导入所有需要的数据常量
 import json # 为解析JSON文本组件添加
 from collections import defaultdict
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from enum import Enum, auto
+
+# --- 类型枚举 ---
+class ItemType(Enum):
+    BLOCK = auto()
+    ITEM = auto()
+    ENTITY = auto()
 
 # --- 常量 ---
 MAX_RECURSION_DEPTH = 10 # 最大递归深度
-VERSION = "1.0.0" # 版本号
+VERSION = "1.1.1" # 版本号
 
 # --- 翻译 ---
 ITEM_ID_TO_CHINESE_NAME = load_translations()
@@ -33,12 +41,32 @@ if not ITEM_ID_TO_CHINESE_NAME:
     print("[WARNING] ITEM_ID_TO_CHINESE_NAME 为空。翻译可能无法正常工作。")
     ITEM_ID_TO_CHINESE_NAME = {} # 回退到空字典以防止 NameError，尽管翻译会丢失。
 
+# --- HOTFIX: 手动修正错误的翻译键 ---
+if 'block.minecraft.chicken' in ITEM_ID_TO_CHINESE_NAME:
+    # 将错误的 "block" 键的值赋给正确的 "entity" 键
+    ITEM_ID_TO_CHINESE_NAME['entity.minecraft.chicken'] = ITEM_ID_TO_CHINESE_NAME['block.minecraft.chicken']
+    # 删除错误的键
+    del ITEM_ID_TO_CHINESE_NAME['block.minecraft.chicken']
+# --- END HOTFIX ---
+
 # --- 数据类 ---
 @dataclass
 class ProcessedItem:
     item_id: str
     count: int
+    item_type: ItemType # 新增：物品类型
     nbt_dict: dict = field(default_factory=dict)
+
+def _parse_properties_from_string(state_string: str) -> dict[str, str]:
+    """从litemapy的BlockState字符串表示中手动解析出属性字典。"""
+    properties = {}
+    if '[' in state_string and state_string.endswith(']'):
+        props_part = state_string[state_string.find('[') + 1:-1]
+        for prop in props_part.split(','):
+            if '=' in prop:
+                key, value = prop.split('=', 1)
+                properties[key] = value
+    return properties
 
 # --- 函数 ---
 def load_schematic(filepath: str) -> litemapy.Schematic:
@@ -204,7 +232,7 @@ def process_item_nbt(item_tag_compound: Compound, material_list: list[ProcessedI
     # --- 结束新增的预处理 ---
 
     if not actual_item_nbt or not isinstance(actual_item_nbt, Compound):
-        return 
+        return
     try:
         item_id_tag = actual_item_nbt.get('id')
         count_tag = actual_item_nbt.get('Count') 
@@ -219,7 +247,7 @@ def process_item_nbt(item_tag_compound: Compound, material_list: list[ProcessedI
         item_id_str = ID_NORMALIZATION_MAP.get(item_id_str_original, item_id_str_original) # 应用ID规范化
         count_int = int(count_tag)   
         simple_nbt_dict = extract_nbt_info(actual_item_nbt) 
-        material_list.append(ProcessedItem(item_id=item_id_str, count=count_int, nbt_dict=simple_nbt_dict))
+        material_list.append(ProcessedItem(item_id=item_id_str, count=count_int, item_type=ItemType.ITEM, nbt_dict=simple_nbt_dict))
         # 潜影盒递归处理
         # 现代潜影盒NBT在 'components' -> 'minecraft:container' -> 物品列表
         # 旧版潜影盒NBT在 item_tag_compound -> 'BlockEntityTag' -> 'Items'
@@ -248,103 +276,183 @@ def process_item_nbt(item_tag_compound: Compound, material_list: list[ProcessedI
                         shulker_items_list = items_list_old
             if shulker_items_list: 
                 for idx, sub_item_nbt in enumerate(shulker_items_list): 
-                    process_item_nbt(sub_item_nbt, material_list, recursion_depth + 1)
+                            process_item_nbt(sub_item_nbt, material_list, recursion_depth + 1)
             else:
                 pass
     except Exception as e:
         print(f"处理物品NBT时出错: {e} - 物品数据: {actual_item_nbt}")
 
+def process_entity(entity_nbt: Compound, material_list: list[ProcessedItem], recursion_depth: int = 0):
+    """
+    递归处理单个实体及其乘客和内容物。
+    """
+    if recursion_depth > MAX_RECURSION_DEPTH:
+        return
+
+    entity_id_str_tag = entity_nbt.get('id')
+    if not entity_id_str_tag or not isinstance(entity_id_str_tag, String):
+        return
+    entity_id_str = str(entity_id_str_tag)
+
+    # a) 跳过黑名单中的实体
+    if entity_id_str in ENTITIES_TO_IGNORE:
+        return
+
+    # b) 特殊处理悬浮物品实体 (minecraft:item)，只统计其内容物
+    if entity_id_str == "minecraft:item":
+        if 'Item' in entity_nbt and isinstance(entity_nbt.get('Item'), Compound):
+            process_item_nbt(entity_nbt['Item'], material_list)
+        return  # 处理完后返回，不统计 "item" 实体本身
+
+    # c) 统计实体本身
+    item_id_for_entity = entity_id_str
+    if entity_id_str in {"minecraft:boat", "minecraft:chest_boat"}:
+        boat_type_tag = entity_nbt.get('Type')
+        if boat_type_tag and isinstance(boat_type_tag, String):
+            boat_type = str(boat_type_tag)
+            if boat_type == "bamboo":
+                item_id_for_entity = f"minecraft:bamboo_{entity_id_str.split(':')[-1].replace('boat', 'raft')}"
+            else:
+                item_id_for_entity = f"minecraft:{boat_type}_{entity_id_str.split(':')[-1]}"
+    material_list.append(ProcessedItem(item_id=item_id_for_entity, count=1, item_type=ItemType.ENTITY, nbt_dict={}))
+
+    # d) 处理实体的内容物 (物品展示框、容器等)
+    if entity_id_str in ITEM_BEARING_ENTITY_IDS:
+        item_tag_key = ITEM_BEARING_ENTITY_IDS[entity_id_str]
+        if item_tag_key in entity_nbt and isinstance(entity_nbt.get(item_tag_key), Compound):
+            process_item_nbt(entity_nbt[item_tag_key], material_list)
+    
+    if entity_id_str in ENTITY_CONTAINER_IDS:
+        items_tag_key = ENTITY_CONTAINER_IDS[entity_id_str]
+        if items_tag_key in entity_nbt and isinstance(entity_nbt.get(items_tag_key), List):
+            items_list = entity_nbt[items_tag_key]
+            if hasattr(items_list, 'subtype') and items_list.subtype == Compound:
+                for item_tag_compound in items_list:
+                    process_item_nbt(item_tag_compound, material_list)
+
+    # e) 核心修复：递归处理乘客实体
+    if 'Passengers' in entity_nbt and isinstance(entity_nbt.get('Passengers'), List):
+        passengers_list = entity_nbt['Passengers']
+        if hasattr(passengers_list, 'subtype') and passengers_list.subtype == Compound:
+            for passenger_nbt in passengers_list:
+                process_entity(passenger_nbt, material_list, recursion_depth + 1)
+
 def get_materials_from_schematic(schematic: litemapy.Schematic) -> list[ProcessedItem]:
     """从投影中提取所有材料，包括TileEntities和Entities中的材料。"""
     material_list: list[ProcessedItem] = []
     if not schematic or not hasattr(schematic, 'regions') or not schematic.regions:
-        return material_list # 无效投影或区域则返回空列表
-    for region_name, region in schematic.regions.items(): # 遍历每个区域
-        if not region: continue # 跳过无效区域
+        return material_list
+
+    for region_name, region in schematic.regions.items():
+        if not region: continue
         min_x, min_y, min_z = region.minx(), region.miny(), region.minz()
         max_x, max_y, max_z = region.maxx(), region.maxy(), region.maxz()
-        # 1. 遍历区域中的所有方块状态
+
+        # 1. 遍历区域中的所有方块状态 (重构后的逻辑 V3 - 独立IF块)
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 for z in range(min_z, max_z + 1):
                     try:
-                        block_state = region[x, y, z] # 获取方块状态
-                        bs_id = getattr(block_state, 'id', None) # 获取方块ID
-                        if bs_id is not None: # 确保ID有效
-                            is_air = bs_id in AIR_BLOCK_IDS # 判断是否为空气方块
-                            if not is_air: # 非空气方块则添加到列表
-                                normalized_bs_id = ID_NORMALIZATION_MAP.get(bs_id, bs_id) # 应用ID规范化
-                                material_list.append(ProcessedItem(item_id=normalized_bs_id, count=1, nbt_dict={}))
-                    except IndexError: # 坐标越界则跳过
+                        block_state = region[x, y, z]
+                        bs_id = getattr(block_state, 'id', None)
+
+                        # --- 路径 1: 忽略的方块 ---
+                        if bs_id is None or bs_id in AIR_BLOCK_IDS or bs_id in BLOCKS_TO_IGNORE:
+                            continue
+
+                        # --- 最终修复：手动从字符串表示中解析属性 ---
+                        properties = _parse_properties_from_string(str(block_state))
+                        item_id_to_add = ID_NORMALIZATION_MAP.get(bs_id, bs_id)
+                        
+                        # --- 路径 2: 门 (独立处理) ---
+                        if "door" in bs_id:
+                            # 只统计下半部分
+                            if properties.get(SPECIAL_HANDLING_BLOCKS["door"]["property"]) == SPECIAL_HANDLING_BLOCKS["door"]["value"]:
+                                material_list.append(ProcessedItem(item_id=item_id_to_add, count=1, item_type=ItemType.BLOCK, nbt_dict={}))
+                            continue # 无论如何都跳过，因为门已被处理 (要么计数，要么忽略上半部分)
+                        
+                        # --- 路径 3: 床 (独立处理) ---
+                        if "bed" in bs_id:
+                            # 只统计床脚部分
+                            if properties.get(SPECIAL_HANDLING_BLOCKS["bed"]["property"]) == SPECIAL_HANDLING_BLOCKS["bed"]["value"]:
+                                material_list.append(ProcessedItem(item_id=item_id_to_add, count=1, item_type=ItemType.BLOCK, nbt_dict={}))
+                            continue # 无论如何都跳过
+                        
+                        # --- 路径 4: 雪 (独立处理) ---
+                        if bs_id == "minecraft:snow":
+                            layers = 1
+                            try:
+                                # 假设属性值是字符串 '1' 到 '8'
+                                layers = int(properties.get(SPECIAL_HANDLING_BLOCKS["snow"]["property"], '1'))
+                            except (ValueError, TypeError):
+                                pass # 如果转换失败，则保持为1
+                            
+                            if layers >= 8:
+                                material_list.append(ProcessedItem(item_id="minecraft:snow_block", count=1, item_type=ItemType.BLOCK, nbt_dict={}))
+                            else:
+                                material_list.append(ProcessedItem(item_id="minecraft:snow", count=layers, item_type=ItemType.BLOCK, nbt_dict={}))
+                            continue # 跳过
+                        
+                        # --- 路径 5: 多物品方块 (蜡烛, 海泡菜) (独立处理) ---
+                        if bs_id in MULTI_ITEM_BLOCKS:
+                            count = 1
+                            try:
+                                prop_name = MULTI_ITEM_BLOCKS[bs_id]
+                                # 假设属性值是字符串 '1' 到 '4'
+                                count = int(properties.get(prop_name, '1'))
+                            except (ValueError, TypeError):
+                                pass # 转换失败则保持为1
+                            material_list.append(ProcessedItem(item_id=item_id_to_add, count=count, item_type=ItemType.BLOCK, nbt_dict={}))
+                            continue # 跳过
+
+                        # --- 路径 6: 标准方块 ---
+                        # (只有未被前面任何 continue 语句跳过的方块才会到达这里)
+                        material_list.append(ProcessedItem(item_id=item_id_to_add, count=1, item_type=ItemType.BLOCK, nbt_dict={}))
+
+                    except (IndexError, ValueError, TypeError) as e:
                         pass
-        # 2. 处理区域中的TileEntities (如箱子, 熔炉, 唱片机等)
+        
+        # 2. 处理区域中的TileEntities (逻辑不变)
         if hasattr(region, 'tile_entities') and region.tile_entities:
             for tile_entity in region.tile_entities:
-                # 确保tile_entity及其NBT数据有效
                 if not tile_entity or not hasattr(tile_entity, 'data') or not isinstance(getattr(tile_entity, 'data', None), Compound):
                     continue
-                te_nbt: Compound = tile_entity.data # 获取TileEntity的NBT数据
-                # 处理包含 'Items' 列表的TileEntity (如箱子, 漏斗, 发射器等)
+                te_nbt: Compound = tile_entity.data
                 if 'Items' in te_nbt and isinstance(te_nbt['Items'], List):
-                    # 确保 'Items' 列表的子类型是Compound (代表每个物品的NBT)
                     if hasattr(te_nbt['Items'], 'subtype') and te_nbt['Items'].subtype == Compound:
-                        for item_tag_compound in te_nbt['Items']: # 遍历每个物品
-                            process_item_nbt(item_tag_compound, material_list) # 处理该物品
-                # 处理唱片机中的唱片 ('RecordItem')
+                        for item_tag_compound in te_nbt['Items']:
+                            process_item_nbt(item_tag_compound, material_list)
                 elif 'RecordItem' in te_nbt and isinstance(te_nbt['RecordItem'], Compound):
-                    process_item_nbt(te_nbt['RecordItem'], material_list) # 处理唱片
-        # 3. 处理区域中的Entities (如物品展示框, 带箱子的矿车等)
-        if hasattr(region, 'entities') and region.entities:
-            for entity in region.entities:
-                # 优先使用 entity.data, 回退到 entity.nbt (旧版litemapy可能用nbt)
-                actual_entity_nbt = None
+                    process_item_nbt(te_nbt['RecordItem'], material_list)
+
+        # 3. 处理区域中的Entities (重构为调用新的递归函数)
+        if hasattr(region, '_Region__entities'):
+            for entity in region._Region__entities:
                 if hasattr(entity, 'data') and isinstance(entity.data, Compound):
-                    actual_entity_nbt = entity.data
-                elif hasattr(entity, 'nbt') and isinstance(entity.nbt, Compound): # Fallback
-                    actual_entity_nbt = entity.nbt 
-                # 确保实体,其实体NBT和实体ID均有效
-                if not entity or actual_entity_nbt is None or not hasattr(entity, 'id'): 
-                    continue
-                entity_nbt: Compound = actual_entity_nbt 
-                entity_id_str: str = entity.id # 获取实体ID
-                # 处理物品展示框类的实体 (ITEM_BEARING_ENTITY_IDS)
-                if entity_id_str in ITEM_BEARING_ENTITY_IDS:
-                    item_tag_key = ITEM_BEARING_ENTITY_IDS[entity_id_str] # 获取该实体存储物品的NBT键名
-                    # 如果实体NBT中包含该键，并且其值是一个Compound (代表物品)
-                    if item_tag_key in entity_nbt and isinstance(entity_nbt[item_tag_key], Compound):
-                        item_compound = entity_nbt[item_tag_key] # 提取物品的NBT
-                        process_item_nbt(item_compound, material_list) # 处理此物品
-                    # 将物品展示框实体本身也作为一种材料添加到列表中
-                    material_list.append(ProcessedItem(item_id=entity_id_str, count=1, nbt_dict={}))
-                # 处理实体容器 (ENTITY_CONTAINER_IDS, 如带箱子的矿车)
-                elif entity_id_str in ENTITY_CONTAINER_IDS:
-                    items_tag_key = ENTITY_CONTAINER_IDS[entity_id_str] # 获取该实体存储物品列表的NBT键名
-                    # 如果实体NBT中包含该键，并且其值是一个List (代表物品列表)
-                    if items_tag_key in entity_nbt and isinstance(entity_nbt[items_tag_key], List):
-                        # 确保列表的子类型是Compound
-                        if hasattr(entity_nbt[items_tag_key], 'subtype') and entity_nbt[items_tag_key].subtype == Compound:
-                            for item_tag_compound_from_entity in entity_nbt[items_tag_key]: # 遍历每个物品
-                                process_item_nbt(item_tag_compound_from_entity, material_list) # 处理该物品
+                    process_entity(entity.data, material_list)
+                                
     return material_list
 
-def aggregate_materials(processed_items: list[ProcessedItem]) -> tuple[dict[tuple[str, frozenset], int], dict[tuple[str, frozenset], dict]]:
-    """聚合处理过的物品列表，统计具有相同ID和NBT的物品数量。"""
-    aggregated_counts: dict[tuple[str, frozenset], int] = {} # 存储聚合后的物品计数 { (item_id, frozenset(nbt_items)), count }
-    nbt_originals: dict[tuple[str, frozenset], dict] = {}     # 存储每个唯一NBT组合的原始NBT字典，用于后续显示
+def aggregate_materials(processed_items: list[ProcessedItem]) -> tuple[dict[tuple[str, frozenset, ItemType], int], dict[tuple[str, frozenset, ItemType], dict]]:
+    """聚合处理过的物品列表，统计具有相同ID、NBT和物品类型的物品数量。"""
+    aggregated_counts: dict[tuple[str, frozenset, ItemType], int] = {}
+    nbt_originals: dict[tuple[str, frozenset, ItemType], dict] = {}
+
     for item in processed_items:
-        # 确保nbt_dict中的所有值都是可哈希的，以便创建frozenset
-        # 当前的 extract_nbt_info 应确保生成可哈希类型 (字符串, 整数, 或元组)
         try:
-            # 对NBT字典的条目进行排序并创建frozenset，作为聚合的键的一部分
             nbt_summary_key_items = frozenset(sorted(item.nbt_dict.items()))
-        except TypeError as te: # 如果NBT字典中包含不可哈希类型 (例如列表)，则会出错
+        except TypeError as te:
             print(f"[ERROR AGGREGATE] 创建NBT的frozenset时发生TypeError: {item.nbt_dict}. 物品ID: {item.item_id}. 错误: {te}")
-            # 使用一个通用的NBT键进行回退，以避免程序崩溃，但这可能导致物品聚合不准确
             nbt_summary_key_items = frozenset(("_problematic_nbt_", str(item.nbt_dict)))
-        key = (item.item_id, nbt_summary_key_items) # 使用 (物品ID, NBT摘要) 作为聚合键
-        aggregated_counts[key] = aggregated_counts.get(key, 0) + item.count # 累加数量
-        if key not in nbt_originals: # 如果是首次遇到此NBT组合，则存储其原始NBT字典
+        
+        # 核心修复：将 item.item_type 添加到聚合键中
+        key = (item.item_id, nbt_summary_key_items, item.item_type)
+        
+        aggregated_counts[key] = aggregated_counts.get(key, 0) + item.count
+        
+        if key not in nbt_originals:
             nbt_originals[key] = item.nbt_dict
+            
     return aggregated_counts, nbt_originals
 
 def format_nbt_for_display(item_id: str, nbt_dict: dict) -> str:
@@ -412,55 +520,113 @@ def format_nbt_for_display(item_id: str, nbt_dict: dict) -> str:
         return "标准" 
     return "; ".join(parts) # 用分号连接所有NBT信息部分
 
-def calculate_shulkers(quantity: int, item_id: str) -> float:
-    """计算给定数量的物品需要多少个潜影盒。"""
-    # 获取物品的堆叠大小，如果未找到则默认为 MAX_STACK_SIZES["DEFAULT"]
+def format_quantity_detailed(quantity: int, item_id: str, item_type: ItemType) -> str:
+    """将总数量格式化为"n盒 + n组 + n个"的字符串。"""
+    if quantity == 0:
+        return "0个"
+    
+    # 核心修复：如果物品是实体，则直接返回数量，不进行堆叠计算
+    if item_type == ItemType.ENTITY:
+        return f"{quantity}个"
+
     stack_size = MAX_STACK_SIZES.get(item_id, MAX_STACK_SIZES.get("DEFAULT", 64))
     if stack_size <= 0: # 不应发生，但作为安全措施
         stack_size = 1 
-    slots_needed = math.ceil(quantity / stack_size) # 计算需要的格子数
-    shulkers_needed = slots_needed / 27.0 # 标准潜影盒有27格
-    # 返回2-3位小数，例如，如果需要，稍后在CSV写入阶段使用round()或字符串格式化
-    # 目前直接返回浮点数。格式化可以在写入CSV时完成。
-    return round(shulkers_needed, 3) # 目前四舍五入到3位小数
 
-def get_item_display_name(item_id: str) -> str:
-    """根据物品ID生成显示名称，优先使用中文名称（如果可用）。"""
-    if item_id in ITEM_ID_TO_CHINESE_NAME and ITEM_ID_TO_CHINESE_NAME[item_id]: # 确保中文名非空
-        retrieved_name = ITEM_ID_TO_CHINESE_NAME[item_id]
-        return retrieved_name
+    # --- 新增：为不可堆叠物品提供特殊处理逻辑 ---
+    if stack_size == 1:
+        # 对于不可堆叠的物品，"组"的概念没有意义，直接计算盒和个
+        shulker_capacity = 27  # 1个潜影盒能装27个不可堆叠物品
+        num_boxes = quantity // shulker_capacity
+        num_individual_items = quantity % shulker_capacity
+        num_stacks = 0  # 不可堆叠物品没有"组"
+    else:
+        # --- 原有逻辑保持不变 ---
+        shulker_capacity = 27 * stack_size
+        num_boxes = quantity // shulker_capacity
+        remainder_after_boxes = quantity % shulker_capacity
+        num_stacks = remainder_after_boxes // stack_size
+        num_individual_items = remainder_after_boxes % stack_size
+
+    parts = []
+    if num_boxes > 0:
+        parts.append(f"{num_boxes}盒")
+    if num_stacks > 0:
+        parts.append(f"{num_stacks}组")
+    if num_individual_items > 0:
+        parts.append(f"{num_individual_items}个")
+
+    if not parts:
+        return "0个"
+        
+    return " + ".join(parts)
+
+def get_item_display_name(item_id: str, item_type: ItemType) -> str:
+    """根据物品ID和类型生成显示名称，优先使用中文名称。"""
+    
+    # 根据物品类型构建优先的翻译键列表
+    base_id_part = item_id.split(':')[-1]
+    keys_to_try = []
+    
+    if item_type == ItemType.ENTITY:
+        keys_to_try.extend([
+            f"entity.minecraft.{base_id_part}",
+            f"item.minecraft.{base_id_part}",
+            f"block.minecraft.{base_id_part}"
+        ])
+    elif item_type == ItemType.BLOCK:
+        keys_to_try.extend([
+            f"block.minecraft.{base_id_part}",
+            f"item.minecraft.{base_id_part}",
+            f"entity.minecraft.{base_id_part}"
+        ])
+    else: # ItemType.ITEM 或其他
+        keys_to_try.extend([
+            f"item.minecraft.{base_id_part}",
+            f"block.minecraft.{base_id_part}",
+            f"entity.minecraft.{base_id_part}"
+        ])
+    
+    # 尝试所有可能的键
+    for key in keys_to_try:
+        if key in ITEM_ID_TO_CHINESE_NAME:
+            retrieved_name = ITEM_ID_TO_CHINESE_NAME.get(key)
+            if retrieved_name:
+                return retrieved_name
+
     # 回退到处理英文ID的逻辑
     return item_id.split(':')[-1].replace('_', ' ').capitalize() # 将 "minecraft:some_item" 转为 "Some item"
 
-def write_to_csv(aggregated_counts: dict[tuple[str, frozenset], int], 
-                 nbt_originals: dict[tuple[str, frozenset], dict], 
+def write_to_csv(aggregated_counts: dict[tuple[str, frozenset, ItemType], int], 
+                 nbt_originals: dict[tuple[str, frozenset, ItemType], dict], 
                  output_filepath: str):
     """将聚合后的材料列表写入CSV文件。"""
-    fieldnames = ["物品名称", "物品ID", "NBT信息", "数量 (个)", "数量 (潜影盒)"] # CSV表头
-
+    fieldnames = ["物品名称", "物品ID", "NBT信息", "数量 (个)", "数量 (盒-组-个)"] # CSV表头
+    
     try:
         with open(output_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile: # 使用 utf-8-sig 以支持Excel中的中文
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader() # 写入表头
-            # 按总数量降序排序，然后按物品显示名称升序排序
+            
+            # 更新排序逻辑以使用新的键结构 (item[0] 是 (id, nbt, type))
             sorted_items = sorted(
                 aggregated_counts.items(), 
-                key=lambda item: (-item[1], get_item_display_name(item[0][0]), item[0][0]) 
-                                # item[1] 是数量
-                                # item[0][0] 是 item_id, 用于生成显示名称
+                key=lambda item: (-item[1], get_item_display_name(item[0][0], item[0][2]), item[0][0])
             )
-            for (item_id_str, nbt_summary_key), quantity_count in sorted_items: # 遍历排序后的物品
-                original_nbt_dict = nbt_originals.get((item_id_str, nbt_summary_key), {}) # 获取原始NBT
+            
+            # 更新循环以解包新的三元组键
+            for (item_id_str, nbt_summary_key, item_type), quantity_count in sorted_items:
+                original_nbt_dict = nbt_originals.get((item_id_str, nbt_summary_key, item_type), {})
                 
-                item_name_display = get_item_display_name(item_id_str) # 获取显示名称
-                nbt_info_display = format_nbt_for_display(item_id_str, original_nbt_dict) # 格式化NBT信息
-                quantity_shulkers = calculate_shulkers(quantity_count, item_id_str) # 计算潜影盒数量
-                writer.writerow({ # 写入行数据
+                item_name_display = get_item_display_name(item_id_str, item_type)
+                nbt_info_display = format_nbt_for_display(item_id_str, original_nbt_dict)
+                quantity_detailed = format_quantity_detailed(quantity_count, item_id_str, item_type)
+                writer.writerow({
                     "物品名称": item_name_display,
                     "物品ID": item_id_str,
                     "NBT信息": nbt_info_display,
                     "数量 (个)": quantity_count,
-                    "数量 (潜影盒)": f"{quantity_shulkers:.3f}" # 格式化为3位小数的字符串
+                    "数量 (盒-组-个)": quantity_detailed
                 })
         print(f"成功将材料列表写入 {output_filepath}")
     except IOError as e:
@@ -470,6 +636,7 @@ def write_to_csv(aggregated_counts: dict[tuple[str, frozenset], int],
 
 def main():
     """主函数，用于解析参数并运行材料计数过程。"""
+<<<<<< main
     output_filepath = None
     print("请在新窗口选择文件")
     input_filepath = tkinter.filedialog.askopenfilename(title='打开投影文件',
