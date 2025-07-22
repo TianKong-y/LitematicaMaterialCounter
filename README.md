@@ -40,14 +40,9 @@ Litematica Material Counter 是一个 Python 脚本，用于精确统计 `.litem
     ```
 
 ## > 使用方法
+在[Releases](https://github.com/TianKong-y/LitematicaMaterialCounter/releases)
+页面下载后解压，双击打开“主程序.exe”后，在弹出的窗口内找到投影文件选择即可，csv会生成在投影文件所在目录
 
-在项目根目录打开cmd或Powershell，通过命令行运行 `material_counter.py` 脚本。
-
-**示例命令**:
-例如，在将投影文件放入本项目的schematics文件夹后
-```bash
-python ./material_counter.py ./schematics/{投影文件名称}.litematic
-```
 
 ## > 输出CSV格式说明
 
